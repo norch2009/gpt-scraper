@@ -1,17 +1,15 @@
 {
-  "name": "norch-gpt-proxy",
+  "name": "gpt-memory-wrapper",
   "version": "1.0.0",
-  "description": "Free GPT-3.5 proxy using Pawan API - No login or API key needed.",
-  "main": "index.js",
+  "description": "Wrapper for haji-mix anthropic API with per-user memory",
+  "main": "server.js",
   "scripts": {
-    "start": "node index.js"
+    "start": "node server.js"
   },
-  "keywords": ["gpt", "chatgpt", "proxy", "norch", "pawan"],
-  "author": "April Manalo",
-  "license": "MIT",
   "dependencies": {
-    "axios": "^1.6.8",
+    "axios": "^1.6.0",
     "cors": "^2.8.5",
-    "express": "^4.18.2"
+    "express": "^4.18.2",
+    "fs-extra": "^11.1.1"
   }
 }
