@@ -1,57 +1,60 @@
 const express = require("express");
-const puppeteer = require("puppeteer");
+const axios = require("axios");
 const cors = require("cors");
+const puppeteer = require("puppeteer-core");
 
 const app = express();
 app.use(cors());
+app.use(express.json());
 
-const COOKIE = {
-  name: "p-b",
-  value: "9XW1lCrtQcjFMf4zyeWm8Q==", // decoded form
-  domain: ".poe.com",
-  path: "/",
-  httpOnly: true,
-  secure: true
-};
+const POE_TOKEN = "9XW1lCrtQcjFMf4zyeWm8Q%3D%3D"; // ← ILAGAY DITO ANG TUNAY NA `p-b` TOKEN
+const CHROME_PATH = "/usr/bin/chromium"; // Common path sa Render
+
+app.get("/", (req, res) => {
+  res.send("🚀 Norch Poe GPT API is live on Render.");
+});
 
 app.get("/api/gpt", async (req, res) => {
   const question = req.query.ask;
-  if (!question) return res.status(400).json({ error: "Missing ask query" });
+  if (!question) return res.status(400).json({ error: "Missing `ask` query" });
 
   try {
     const browser = await puppeteer.launch({
+      executablePath: CHROME_PATH,
       headless: true,
-      args: ['--no-sandbox']
+      args: ["--no-sandbox", "--disable-setuid-sandbox"],
     });
+
     const page = await browser.newPage();
+    await page.setExtraHTTPHeaders({
+      "User-Agent": "Mozilla/5.0",
+      "Cookie": `p-b=${POE_TOKEN}`,
+    });
 
-    // Set cookie for login
-    await page.setCookie(COOKIE);
+    await page.goto("https://poe.com/gpt-4", { waitUntil: "networkidle2" });
 
-    // Go to GPT-4.1 bot directly
-    await page.goto("https://poe.com/GPT-4.1", { waitUntil: "networkidle2" });
-
-    // Wait for textarea and type the question
-    await page.waitForSelector("textarea");
-    await page.type("textarea", question);
+    await page.waitForSelector('textarea', { timeout: 10000 });
+    await page.type('textarea', question);
     await page.keyboard.press("Enter");
 
-    // Wait for response to appear
-    await page.waitForSelector("[data-testid='message-text']", { timeout: 15000 });
+    await page.waitForTimeout(3000);
 
-    // Get the latest bot response
-    const responseText = await page.$$eval(
-      "[data-testid='message-text']",
-      nodes => nodes[nodes.length - 1].innerText
-    );
+    const response = await page.evaluate(() => {
+      const el = document.querySelector('[data-testid="message-text"]');
+      return el?.innerText || "❌ Walang sagot na nakuha.";
+    });
 
     await browser.close();
-    res.json({ response: responseText });
+
+    res.json({ response });
   } catch (err) {
-    console.error("❌", err);
-    res.status(500).json({ error: "Failed to fetch from Poe", details: err.message });
+    console.error("🛑 Scraper Error:", err);
+    res.status(500).json({
+      error: "Failed to fetch from Poe",
+      details: err.message,
+    });
   }
 });
 
 const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => console.log(`✅ Norch GPT Scraper live at http://localhost:${PORT}`));
+app.listen(PORT, () => console.log(`✅ API running on http://localhost:${PORT}`));
