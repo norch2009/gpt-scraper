@@ -1,60 +1,63 @@
 const express = require("express");
-const axios = require("axios");
 const cors = require("cors");
-const puppeteer = require("puppeteer-core");
+const puppeteer = require("puppeteer");
 
 const app = express();
 app.use(cors());
 app.use(express.json());
 
-const POE_TOKEN = "9XW1lCrtQcjFMf4zyeWm8Q%3D%3D"; // ← ILAGAY DITO ANG TUNAY NA `p-b` TOKEN
-const CHROME_PATH = "/usr/bin/chromium"; // Common path sa Render
-
 app.get("/", (req, res) => {
-  res.send("🚀 Norch Poe GPT API is live on Render.");
+  res.send("🚀 Norch Poe GPT API is live.");
 });
 
 app.get("/api/gpt", async (req, res) => {
   const question = req.query.ask;
-  if (!question) return res.status(400).json({ error: "Missing `ask` query" });
+  if (!question) {
+    return res.status(400).json({ error: "Missing `ask` query" });
+  }
 
   try {
     const browser = await puppeteer.launch({
-      executablePath: CHROME_PATH,
       headless: true,
-      args: ["--no-sandbox", "--disable-setuid-sandbox"],
+      args: ["--no-sandbox", "--disable-setuid-sandbox"]
     });
-
     const page = await browser.newPage();
+
+    // Replace this with your real `p-b` Poe cookie
+    const POE_TOKEN = "9XW1lCrtQcjFMf4zyeWm8Q%3D%3D";
+
     await page.setExtraHTTPHeaders({
-      "User-Agent": "Mozilla/5.0",
-      "Cookie": `p-b=${POE_TOKEN}`,
+      'Cookie': `p-b=${POE_TOKEN}`,
+      'User-Agent': 'Mozilla/5.0'
     });
 
-    await page.goto("https://poe.com/gpt-4", { waitUntil: "networkidle2" });
+    await page.goto("https://poe.com/capybara", { waitUntil: "networkidle2" });
 
-    await page.waitForSelector('textarea', { timeout: 10000 });
-    await page.type('textarea', question);
+    // Wait for textarea and type message
+    await page.waitForSelector("textarea");
+    await page.type("textarea", question);
     await page.keyboard.press("Enter");
 
-    await page.waitForTimeout(3000);
+    // Wait for response bubble
+    await page.waitForSelector(".Message_botMessageBubble__SWIEk", { timeout: 15000 });
 
-    const response = await page.evaluate(() => {
-      const el = document.querySelector('[data-testid="message-text"]');
-      return el?.innerText || "❌ Walang sagot na nakuha.";
+    const responseText = await page.evaluate(() => {
+      const messages = [...document.querySelectorAll(".Message_botMessageBubble__SWIEk")];
+      return messages.at(-1)?.innerText || "❌ No response";
     });
 
     await browser.close();
-
-    res.json({ response });
+    res.json({ response: responseText });
   } catch (err) {
-    console.error("🛑 Scraper Error:", err);
+    console.error("❌ Scraper Error:", err.message);
     res.status(500).json({
       error: "Failed to fetch from Poe",
-      details: err.message,
+      details: err.message
     });
   }
 });
 
 const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => console.log(`✅ API running on http://localhost:${PORT}`));
+app.listen(PORT, () => {
+  console.log(`✅ API running at http://localhost:${PORT}`);
+});
