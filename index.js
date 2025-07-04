@@ -9,6 +9,7 @@ app.use(express.json());
 
 const MEMORY_FILE = "./chatMemory.json";
 const BASE_API = "https://haji-mix-api.gleeze.com/api/anthropic";
+const IMAGE_API = "https://haji-mix-api.gleeze.com/api/imagen";
 
 // 🔁 Load chat memory from file
 async function getMemory(uid) {
@@ -40,11 +41,37 @@ app.get("/api/reset", async (req, res) => {
   res.json({ success: true, message: `Memory for ${uid} cleared.` });
 });
 
-// 🧠 Wrapper API endpoint with memory
+// 🧠 Main endpoint with Claude + Image trigger
 app.get("/api/chat", async (req, res) => {
   const { ask, uid = "guest", model = "claude-opus-4-20250514" } = req.query;
   if (!ask) return res.status(400).json({ error: "Missing ask query" });
 
+  const trigger = ask.toLowerCase().includes("imagine") || ask.toLowerCase().includes("generate") || ask.toLowerCase().includes("image");
+
+  // 📷 IMAGE HANDLER
+  if (trigger) {
+    try {
+      const imageResponse = await axios.get(IMAGE_API, {
+        params: {
+          prompt: ask,
+          model: "dall-e-3",
+          style: "",
+          quality: "hd",
+          size: "1024x1024"
+        }
+      });
+
+      return res.json({
+        type: "image",
+        image: imageResponse.data
+      });
+    } catch (err) {
+      console.error("❌ Image error:", err.message);
+      return res.status(500).json({ error: "Failed to generate image." });
+    }
+  }
+
+  // 💬 CLAUDE MEMORY CHAT HANDLER
   const memory = await getMemory(uid);
   const promptWithContext = memory
     .map(msg => `User: ${msg.user}\nAssistant: ${msg.bot}`)
@@ -63,9 +90,13 @@ app.get("/api/chat", async (req, res) => {
     const botReply = response.data?.answer || "❌ No response.";
     await saveMemory(uid, ask, botReply);
 
-    res.json({ reply: botReply, memoryLength: memory.length });
+    res.json({
+      type: "chat",
+      reply: botReply,
+      memoryLength: memory.length
+    });
   } catch (err) {
-    console.error("❌ Error:", err.message);
+    console.error("❌ Claude error:", err.message);
     res.status(500).json({ error: "Failed to get GPT response." });
   }
 });
