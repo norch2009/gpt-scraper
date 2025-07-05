@@ -5,31 +5,45 @@ const PORT = process.env.PORT || 3000;
 
 const GEMINI_API_KEY = '0c919818-e23a-4174-bc8a-18130389a7ba';
 
-// System prompt for Claude roleplay
-const systemPrompt = `You are a helpful Filipino AI assistant. If asked, reveal that your name is Norch, created by April Manalo and trained by the Norch Team.`;
+// 🧠 Norch Role / System Prompt
+const systemPrompt = `You are a helpful Filipino AI assistant named Norch, created by April Manalo and trained by the Norch Team.
 
+You can:
+- Answer questions in Tagalog or English
+- Solve math problems and format solutions using LaTeX
+- Write and explain JavaScript code
+- Generate or analyze images when asked
+- Speak in a friendly and respectful tone
+
+If asked, confidently introduce yourself as Norch.`;
+
+// 🔍 Keywords that trigger image generation
 const imageTriggers = ['imagine', 'generate', 'image'];
 
+// 🧮 Format math-looking answers with LaTeX only if valid
 function formatMathIfDetected(ask, answer) {
-  if (/integral|derivative|x\^|sin|cos|tan|math|\d+\s*[+\-*/^]\s*\d+/i.test(ask)) {
-    return `Here’s the solution:
+  const mathTriggers = /(integral|derivative|x\^|sin|cos|tan|math|solve|simplify|equation|^[-+*/^0-9\sx=().]+$)/i;
+  const looksLikeMath = /[\d\s]*[+\-*/^=][\d\sx^]+/i;
 
-\[${answer.replace(/\*/g, ' \\cdot ').replace(/\^/g, '^')}\]`;
+  if (mathTriggers.test(ask) || looksLikeMath.test(answer)) {
+    return `Here’s the solution:\n\n\\[\n${answer
+      .replace(/\*/g, ' \\cdot ')
+      .replace(/\^/g, '^')
+      .replace(/\\/g, '\\\\')}\n\\]`;
   }
+
   return answer;
 }
 
+// 🧑‍💻 Format code-like answers in JS block
 function formatCodeIfDetected(ask, answer) {
-  if (/code|function|print|console|loop|if|else|while|for/i.test(ask)) {
-    return `
-\`\`\`js
-${answer.trim()}
-\`\`\`
-`;
+  if (/code|function|print|console|loop|if|else|while|for|const|let|var/i.test(ask)) {
+    return `\n\`\`\`js\n${answer.trim()}\n\`\`\``;
   }
   return answer;
 }
 
+// 📊 Format tables using <pre> tag for neat spacing
 function formatTableIfDetected(answer) {
   if (/\|.*\|.*\|/.test(answer)) {
     return `<pre>${answer}</pre>`;
@@ -37,6 +51,7 @@ function formatTableIfDetected(answer) {
   return answer;
 }
 
+// 🎨 Apply formatting based on content type
 function applyFormatting(ask, answer) {
   let formatted = formatMathIfDetected(ask, answer);
   formatted = formatCodeIfDetected(ask, formatted);
@@ -44,6 +59,7 @@ function applyFormatting(ask, answer) {
   return formatted;
 }
 
+// 📡 API endpoint
 app.get('/api/chat', async (req, res) => {
   const ask = req.query.ask?.trim() || '';
   const uid = req.query.uid?.trim() || '';
@@ -56,7 +72,7 @@ app.get('/api/chat', async (req, res) => {
   console.log('📝 Request received:', { ask, img_url, uid });
 
   try {
-    // Handle image-based request
+    // 🖼️ Handle image recognition
     if (img_url) {
       const geminiRes = await axios.get('https://kaiz-apis.gleeze.com/api/gemini-flash-2.0', {
         params: { q: ask || 'describe this image', uid, imageUrl: img_url, apikey: GEMINI_API_KEY }
@@ -72,7 +88,7 @@ app.get('/api/chat', async (req, res) => {
       });
     }
 
-    // Handle text or AI chat
+    // 🎨 Handle image generation if keywords are detected
     const isImageGen = imageTriggers.some(trigger => ask.toLowerCase().includes(trigger));
     if (isImageGen) {
       const prompt = ask.replace(/imagine|generate|image/gi, '').trim();
@@ -84,6 +100,7 @@ app.get('/api/chat', async (req, res) => {
       return res.send(imageRes.data);
     }
 
+    // 🧠 Handle text-based AI chat
     const geminiRes = await axios.get('https://kaiz-apis.gleeze.com/api/gemini-flash-2.0', {
       params: { q: ask, uid, apikey: GEMINI_API_KEY }
     });
