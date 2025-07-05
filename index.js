@@ -5,26 +5,25 @@ const PORT = process.env.PORT || 3000;
 
 const GEMINI_API_KEY = '0c919818-e23a-4174-bc8a-18130389a7ba';
 
-// 🎭 System Prompt for Norch's persona
-const systemPrompt = `You are a helpful Filipino AI assistant named Norch, created by April Manalo and trained by the Norch Team.
-
+// 🧠 Norch persona prompt
+const systemPrompt = `You are Norch, a helpful Filipino AI assistant created by April Manalo and trained by the Norch Team. 
 You can:
 - Answer questions in Tagalog or English
-- Solve math problems and format solutions using LaTeX
-- Write and explain JavaScript code
-- Generate or analyze images when asked
-- Speak in a friendly and respectful tone
+- Solve math problems and explain them step-by-step using LaTeX
+- Generate or analyze images
+- Write and explain code
+- Respond in a friendly, respectful tone
 
-If asked, confidently introduce yourself as Norch.`;
+If asked who made you, confidently say "I was created by April Manalo and trained by the Norch Team."`;
 
-// Trigger keywords for image generation
+// Image generation triggers
 const imageTriggers = ['imagine', 'generate', 'image'];
 
-// ✅ Fixed: Only apply LaTeX formatting if it's truly a math answer
+// ✅ Smart math formatter
 function formatMathIfDetected(ask, answer) {
   const mathTriggers = /(integral|derivative|x\^|solve|simplify|equation|math|find|compute|what is|=|\d+\s*[+\-*/^]\s*\d+)/i;
   const looksLikeLatex = /^[\d\sx+\-*/^=().]+$/;
-  const isLikelyParagraph = /[a-z]{4,}\s[a-z]{4,}/i; // detects sentence-like answers
+  const isLikelyParagraph = /[a-z]{4,}\s[a-z]{4,}/i;
 
   if (mathTriggers.test(ask) && !isLikelyParagraph.test(answer) && looksLikeLatex.test(answer.replace(/\n/g, ''))) {
     return `Here’s the solution:\n\n\\[\n${answer
@@ -36,7 +35,7 @@ function formatMathIfDetected(ask, answer) {
   return answer;
 }
 
-// Format JS code blocks
+// ✅ Code formatter
 function formatCodeIfDetected(ask, answer) {
   if (/code|function|print|console|loop|if|else|while|for|const|let|var/i.test(ask)) {
     return `\n\`\`\`js\n${answer.trim()}\n\`\`\``;
@@ -44,7 +43,7 @@ function formatCodeIfDetected(ask, answer) {
   return answer;
 }
 
-// Format tables as <pre>
+// ✅ Table formatter
 function formatTableIfDetected(answer) {
   if (/\|.*\|.*\|/.test(answer)) {
     return `<pre>${answer}</pre>`;
@@ -52,7 +51,7 @@ function formatTableIfDetected(answer) {
   return answer;
 }
 
-// Apply all formatters
+// ✅ Combine all formatters
 function applyFormatting(ask, answer) {
   let formatted = formatMathIfDetected(ask, answer);
   formatted = formatCodeIfDetected(ask, formatted);
@@ -60,7 +59,7 @@ function applyFormatting(ask, answer) {
   return formatted;
 }
 
-// 📡 API route
+// 🌐 API endpoint
 app.get('/api/chat', async (req, res) => {
   const ask = req.query.ask?.trim() || '';
   const uid = req.query.uid?.trim() || '';
@@ -73,10 +72,16 @@ app.get('/api/chat', async (req, res) => {
   console.log('📝 Request received:', { ask, img_url, uid });
 
   try {
-    // 📷 Image recognition
+    // 🧠 IMAGE RECOGNITION
     if (img_url) {
       const geminiRes = await axios.get('https://kaiz-apis.gleeze.com/api/gemini-flash-2.0', {
-        params: { q: ask || 'describe this image', uid, imageUrl: img_url, apikey: GEMINI_API_KEY }
+        params: {
+          q: ask || 'describe this image',
+          uid,
+          imageUrl: img_url,
+          apikey: GEMINI_API_KEY,
+          system: systemPrompt // ✅ Apply persona
+        }
       });
 
       const raw = geminiRes.data?.response || 'No response.';
@@ -89,7 +94,7 @@ app.get('/api/chat', async (req, res) => {
       });
     }
 
-    // 🖼️ Image generation
+    // 🎨 IMAGE GENERATION
     const isImageGen = imageTriggers.some(trigger => ask.toLowerCase().includes(trigger));
     if (isImageGen) {
       const prompt = ask.replace(/imagine|generate|image/gi, '').trim();
@@ -101,9 +106,14 @@ app.get('/api/chat', async (req, res) => {
       return res.send(imageRes.data);
     }
 
-    // 🧠 Text-based response
+    // ✨ TEXT CHAT with Norch persona
     const geminiRes = await axios.get('https://kaiz-apis.gleeze.com/api/gemini-flash-2.0', {
-      params: { q: ask, uid, apikey: GEMINI_API_KEY }
+      params: {
+        q: ask,
+        uid,
+        apikey: GEMINI_API_KEY,
+        system: systemPrompt // ✅ Apply persona
+      }
     });
 
     const raw = geminiRes.data?.response || 'No answer available.';
