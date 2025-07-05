@@ -5,16 +5,44 @@ const PORT = process.env.PORT || 3000;
 
 const GEMINI_API_KEY = '0c919818-e23a-4174-bc8a-18130389a7ba';
 
-const systemPrompt = `
-You are a helpful AI assistant.
-Only reveal that your name is Norch, created by April Manalo and trained by the Norch Team if someone asks who you are.
-When answering questions involving math, programming, or data tables, use properly formatted Markdown with:
-- LaTeX for math
-- Code blocks for code
-- Tables for data
-`;
+// System prompt for Claude roleplay
+const systemPrompt = `You are a helpful Filipino AI assistant. If asked, reveal that your name is Norch, created by April Manalo and trained by the Norch Team.`;
 
 const imageTriggers = ['imagine', 'generate', 'image'];
+
+function formatMathIfDetected(ask, answer) {
+  if (/integral|derivative|x\^|sin|cos|tan|math|\d+\s*[+\-*/^]\s*\d+/i.test(ask)) {
+    return `Here’s the solution:
+
+\[${answer.replace(/\*/g, ' \\cdot ').replace(/\^/g, '^')}\]`;
+  }
+  return answer;
+}
+
+function formatCodeIfDetected(ask, answer) {
+  if (/code|function|print|console|loop|if|else|while|for/i.test(ask)) {
+    return `
+\`\`\`js
+${answer.trim()}
+\`\`\`
+`;
+  }
+  return answer;
+}
+
+function formatTableIfDetected(answer) {
+  if (/\|.*\|.*\|/.test(answer)) {
+    return `<pre>${answer}</pre>`;
+  }
+  return answer;
+}
+
+function applyFormatting(ask, answer) {
+  let formatted = formatMathIfDetected(ask, answer);
+  formatted = formatCodeIfDetected(ask, formatted);
+  formatted = formatTableIfDetected(formatted);
+  return formatted;
+}
 
 app.get('/api/chat', async (req, res) => {
   const ask = req.query.ask?.trim() || '';
@@ -28,62 +56,50 @@ app.get('/api/chat', async (req, res) => {
   console.log('📝 Request received:', { ask, img_url, uid });
 
   try {
-    // Image generation via DALL·E 3
-    const shouldGenerateImage = imageTriggers.some(trig => ask.toLowerCase().includes(trig));
-    if (shouldGenerateImage) {
-      const prompt = ask.replace(/imagine|generate|image/gi, '').trim();
-      console.log('🎨 Generating image for prompt:', prompt);
-
-      const imgRes = await axios.get('https://haji-mix-api.gleeze.com/api/imagen', {
-        params: { prompt, uid },
-        responseType: 'arraybuffer'
-      });
-
-      res.set('Content-Type', 'image/png');
-      return res.send(imgRes.data);
-    }
-
-    // Image recognition or Q&A
+    // Handle image-based request
     if (img_url) {
-      if (!/^https?:\/\/.+\.(jpg|jpeg|png|gif)$/i.test(img_url)) {
-        return res.status(400).json({ error: 'img_url must be a direct image link ending with .jpg/.png/.gif' });
-      }
-
-      const gemRes = await axios.get('https://kaiz-apis.gleeze.com/api/gemini-flash-2.0', {
-        params: {
-          q: ask || 'describe this image',
-          uid,
-          imageUrl: img_url,
-          apikey: GEMINI_API_KEY
-        }
+      const geminiRes = await axios.get('https://kaiz-apis.gleeze.com/api/gemini-flash-2.0', {
+        params: { q: ask || 'describe this image', uid, imageUrl: img_url, apikey: GEMINI_API_KEY }
       });
+
+      const raw = geminiRes.data?.response || 'No response.';
+      const formatted = applyFormatting(ask, raw);
 
       return res.json({
-        type: 'text',
+        type: 'image-analysis',
         model_used: 'gemini-flash-2.0',
-        answer: gemRes.data?.response
+        answer: formatted
       });
     }
 
-    // Text Q&A only
-    const gemRes = await axios.get('https://kaiz-apis.gleeze.com/api/gemini-flash-2.0', {
-      params: {
-        q: ask,
-        uid,
-        apikey: GEMINI_API_KEY
-      }
+    // Handle text or AI chat
+    const isImageGen = imageTriggers.some(trigger => ask.toLowerCase().includes(trigger));
+    if (isImageGen) {
+      const prompt = ask.replace(/imagine|generate|image/gi, '').trim();
+      const imageRes = await axios.get('https://haji-mix-api.gleeze.com/api/imagen', {
+        params: { prompt, uid, model: 'dall-e-3', quality: 'hd' },
+        responseType: 'arraybuffer'
+      });
+      res.set('Content-Type', 'image/png');
+      return res.send(imageRes.data);
+    }
+
+    const geminiRes = await axios.get('https://kaiz-apis.gleeze.com/api/gemini-flash-2.0', {
+      params: { q: ask, uid, apikey: GEMINI_API_KEY }
     });
+
+    const raw = geminiRes.data?.response || 'No answer available.';
+    const formatted = applyFormatting(ask, raw);
 
     return res.json({
       type: 'text',
       model_used: 'gemini-flash-2.0',
-      answer: gemRes.data?.response
+      answer: formatted
     });
-
   } catch (err) {
-    console.error('❌ Error in /api/chat:', err.response?.data || err.message);
-    return res.status(500).json({ error: 'Internal server error', details: err.response?.data || err.message });
+    console.error('❌ API Error:', err.response?.data || err.message);
+    return res.status(500).json({ error: 'Internal server error', details: err.message });
   }
 });
 
-app.listen(PORT, () => console.log(`✅ Norch server running on port ${PORT}`));
+app.listen(PORT, () => console.log(`✅ Norch API listening on port ${PORT}`));
