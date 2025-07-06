@@ -1,9 +1,13 @@
 const express = require('express');
 const axios = require('axios');
+const cors = require('cors');
 const app = express();
 const PORT = process.env.PORT || 3000;
 
 const GEMINI_API_KEY = '0c919818-e23a-4174-bc8a-18130389a7ba';
+
+// Allow CORS (important for frontend)
+app.use(cors());
 
 // 🧠 Norch persona prompt
 const systemPrompt = `You are Norch, a helpful Filipino AI assistant created by April Manalo and trained by the Norch Team. 
@@ -80,7 +84,7 @@ app.get('/api/chat', async (req, res) => {
           uid,
           imageUrl: img_url,
           apikey: GEMINI_API_KEY,
-          system: systemPrompt // ✅ Apply persona
+          system: systemPrompt
         }
       });
 
@@ -94,16 +98,19 @@ app.get('/api/chat', async (req, res) => {
       });
     }
 
-    // 🎨 IMAGE GENERATION
+    // 🎨 IMAGE GENERATION (Fixed: return JSON instead of PNG)
     const isImageGen = imageTriggers.some(trigger => ask.toLowerCase().includes(trigger));
     if (isImageGen) {
       const prompt = ask.replace(/imagine|generate|image/gi, '').trim();
       const imageRes = await axios.get('https://haji-mix-api.gleeze.com/api/imagen', {
-        params: { prompt, uid, model: 'dall-e-3', quality: 'hd' },
-        responseType: 'arraybuffer'
+        params: { prompt, uid, model: 'dall-e-3', quality: 'hd' }
       });
-      res.set('Content-Type', 'image/png');
-      return res.send(imageRes.data);
+
+      return res.json({
+        type: 'image-generation',
+        model_used: 'dall-e-3',
+        answer: imageRes.data.image || imageRes.data.url || 'https://dummyimage.com/512x512/eee/000.png&text=Image+Unavailable'
+      });
     }
 
     // ✨ TEXT CHAT with Norch persona
@@ -112,7 +119,7 @@ app.get('/api/chat', async (req, res) => {
         q: ask,
         uid,
         apikey: GEMINI_API_KEY,
-        system: systemPrompt // ✅ Apply persona
+        system: systemPrompt
       }
     });
 
@@ -124,6 +131,7 @@ app.get('/api/chat', async (req, res) => {
       model_used: 'gemini-flash-2.0',
       answer: formatted
     });
+
   } catch (err) {
     console.error('❌ API Error:', err.response?.data || err.message);
     return res.status(500).json({ error: 'Internal server error', details: err.message });
