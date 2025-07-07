@@ -6,7 +6,6 @@ const PORT = process.env.PORT || 3000;
 
 const GEMINI_API_KEY = '0c919818-e23a-4174-bc8a-18130389a7ba';
 
-// Allow CORS (important for frontend)
 app.use(cors());
 
 // 🧠 Norch persona prompt
@@ -20,10 +19,9 @@ You can:
 
 If asked who made you, confidently say "I was created by April Manalo and trained by the Norch Team."`;
 
-// Image generation triggers
 const imageTriggers = ['imagine', 'generate', 'image'];
 
-// ✅ Smart math formatter
+// 🔢 Format math
 function formatMathIfDetected(ask, answer) {
   const mathTriggers = /(integral|derivative|x\^|solve|simplify|equation|math|find|compute|what is|=|\d+\s*[+\-*/^]\s*\d+)/i;
   const looksLikeLatex = /^[\d\sx+\-*/^=().]+$/;
@@ -35,11 +33,10 @@ function formatMathIfDetected(ask, answer) {
       .replace(/\^/g, '^')
       .replace(/\\/g, '\\\\')}\n\\]`;
   }
-
   return answer;
 }
 
-// ✅ Code formatter
+// 💻 Format code
 function formatCodeIfDetected(ask, answer) {
   if (/code|function|print|console|loop|if|else|while|for|const|let|var/i.test(ask)) {
     return `\n\`\`\`js\n${answer.trim()}\n\`\`\``;
@@ -47,7 +44,7 @@ function formatCodeIfDetected(ask, answer) {
   return answer;
 }
 
-// ✅ Table formatter
+// 📊 Format table
 function formatTableIfDetected(answer) {
   if (/\|.*\|.*\|/.test(answer)) {
     return `<pre>${answer}</pre>`;
@@ -55,7 +52,7 @@ function formatTableIfDetected(answer) {
   return answer;
 }
 
-// ✅ Combine all formatters
+// 🧠 All formatters
 function applyFormatting(ask, answer) {
   let formatted = formatMathIfDetected(ask, answer);
   formatted = formatCodeIfDetected(ask, formatted);
@@ -63,7 +60,7 @@ function applyFormatting(ask, answer) {
   return formatted;
 }
 
-// 🌐 API endpoint
+// 🌐 Main API endpoint
 app.get('/api/chat', async (req, res) => {
   const ask = req.query.ask?.trim() || '';
   const uid = req.query.uid?.trim() || '';
@@ -98,22 +95,41 @@ app.get('/api/chat', async (req, res) => {
       });
     }
 
-    // 🎨 IMAGE GENERATION (Fixed: return JSON instead of PNG)
+    // 🎨 IMAGE GENERATION
     const isImageGen = imageTriggers.some(trigger => ask.toLowerCase().includes(trigger));
     if (isImageGen) {
       const prompt = ask.replace(/imagine|generate|image/gi, '').trim();
-      const imageRes = await axios.get('https://haji-mix-api.gleeze.com/api/imagen', {
-        params: { prompt, uid, model: 'dall-e-3', quality: 'hd' }
-      });
 
-      return res.json({
-        type: 'image-generation',
-        model_used: 'dall-e-3',
-        answer: imageRes.data.image || imageRes.data.url || 'https://dummyimage.com/512x512/eee/000.png&text=Image+Unavailable'
-      });
+      try {
+        const imageRes = await axios.get('https://haji-mix-api.gleeze.com/api/imagen', {
+          params: { prompt, uid, model: 'dall-e-3', quality: 'hd' }
+        });
+
+        const resultUrl = imageRes.data?.image || imageRes.data?.url || '';
+
+        if (resultUrl.includes('dummyimage.com')) {
+          throw new Error('Fallback dummy image detected.');
+        }
+
+        return res.json({
+          type: 'image-generation',
+          model_used: 'dall-e-3',
+          answer: resultUrl
+        });
+
+      } catch (imageErr) {
+        console.warn('⚠️ DALL·E generation failed, using fallback:', imageErr.message);
+        const fallbackImage = `https://image.pollinations.ai/prompt/${encodeURIComponent(prompt)}`;
+
+        return res.json({
+          type: 'image-generation',
+          model_used: 'pollinations.ai',
+          answer: fallbackImage
+        });
+      }
     }
 
-    // ✨ TEXT CHAT with Norch persona
+    // ✨ TEXT CHAT
     const geminiRes = await axios.get('https://kaiz-apis.gleeze.com/api/gemini-flash-2.0', {
       params: {
         q: ask,
