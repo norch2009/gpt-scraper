@@ -52,7 +52,7 @@ function formatTableIfDetected(answer) {
   return answer;
 }
 
-// 🧠 All formatters
+// ✅ Apply all formatters
 function applyFormatting(ask, answer) {
   let formatted = formatMathIfDetected(ask, answer);
   formatted = formatCodeIfDetected(ask, formatted);
@@ -105,10 +105,22 @@ app.get('/api/chat', async (req, res) => {
           params: { prompt, uid, model: 'dall-e-3', quality: 'hd' }
         });
 
-        const resultUrl = imageRes.data?.image || imageRes.data?.url || '';
+        console.log('📦 Raw image API response:', imageRes.data);
 
-        if (resultUrl.includes('dummyimage.com')) {
-          throw new Error('Fallback dummy image detected.');
+        let resultUrl = '';
+
+        if (imageRes.data?.image && imageRes.data.image.startsWith('http')) {
+          resultUrl = imageRes.data.image;
+        } else if (imageRes.data?.url && imageRes.data.url.startsWith('http')) {
+          resultUrl = imageRes.data.url;
+        } else if (typeof imageRes.data === 'string' && imageRes.data.startsWith('http')) {
+          resultUrl = imageRes.data;
+        }
+
+        console.log('✅ Final image URL:', resultUrl);
+
+        if (!resultUrl || resultUrl.includes('dummyimage.com')) {
+          throw new Error('No valid image returned.');
         }
 
         return res.json({
@@ -118,7 +130,7 @@ app.get('/api/chat', async (req, res) => {
         });
 
       } catch (imageErr) {
-        console.warn('⚠️ DALL·E generation failed, using fallback:', imageErr.message);
+        console.warn('⚠️ Image generation failed:', imageErr.message);
         const fallbackImage = `https://image.pollinations.ai/prompt/${encodeURIComponent(prompt)}`;
 
         return res.json({
